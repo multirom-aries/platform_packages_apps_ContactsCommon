@@ -26,11 +26,14 @@ import android.content.Intent;
 import android.net.Uri;
 import android.os.Handler;
 import android.os.Message;
+import android.provider.ContactsContract;
 import android.provider.ContactsContract.RawContacts;
 import android.widget.Toast;
 
 import com.android.contacts.common.R;
 import com.android.vcard.VCardEntry;
+
+import java.text.NumberFormat;
 
 public class NotificationImportExportListener implements VCardImportExportListener,
         Handler.Callback {
@@ -123,8 +126,10 @@ public class NotificationImportExportListener implements VCardImportExportListen
                             RawContacts.CONTENT_URI, rawContactId));
             intent = new Intent(Intent.ACTION_VIEW, contactUri);
         } else {
-            intent = null;
+            intent = new Intent(Intent.ACTION_VIEW);
+            intent.setType(ContactsContract.Contacts.CONTENT_TYPE);
         }
+        intent.setPackage(mContext.getPackageName());
         final Notification notification =
                 NotificationImportExportListener.constructFinishNotification(mContext,
                 description, null, intent);
@@ -152,9 +157,11 @@ public class NotificationImportExportListener implements VCardImportExportListen
 
     @Override
     public void onExportProcessed(ExportRequest request, int jobId) {
-        final String displayName = request.destUri.getLastPathSegment();
-        final String message = mContext.getString(R.string.vcard_export_will_start_message,
-                displayName);
+        final String displayName = ExportVCardActivity.getOpenableUriDisplayName(mContext,
+                request.destUri);
+        final String message = displayName == null
+                ? mContext.getString(R.string.vcard_export_will_start_message_fallback)
+                : mContext.getString(R.string.vcard_export_will_start_message, displayName);
 
         mHandler.obtainMessage(0, message).sendToTarget();
         final Notification notification =
@@ -218,13 +225,15 @@ public class NotificationImportExportListener implements VCardImportExportListen
                 .setProgress(totalCount, currentCount, totalCount == - 1)
                 .setTicker(tickerText)
                 .setContentTitle(description)
+                .setColor(context.getResources().getColor(R.color.dialtacts_theme_color))
                 .setSmallIcon(type == VCardService.TYPE_IMPORT
                         ? android.R.drawable.stat_sys_download
                         : android.R.drawable.stat_sys_upload)
                 .setContentIntent(PendingIntent.getActivity(context, 0, intent, 0));
         if (totalCount > 0) {
-            builder.setContentText(context.getString(R.string.percentage,
-                    String.valueOf(currentCount * 100 / totalCount)));
+            String percentage =
+                    NumberFormat.getPercentInstance().format((double) currentCount / totalCount);
+            builder.setContentText(percentage);
         }
         return builder.getNotification();
     }
@@ -240,9 +249,13 @@ public class NotificationImportExportListener implements VCardImportExportListen
         return new Notification.Builder(context)
                 .setAutoCancel(true)
                 .setSmallIcon(android.R.drawable.stat_notify_error)
+                .setColor(context.getResources().getColor(R.color.dialtacts_theme_color))
                 .setContentTitle(description)
                 .setContentText(description)
-                .setContentIntent(PendingIntent.getActivity(context, 0, new Intent(), 0))
+                // Launch an intent that won't resolve to anything. Restrict the intent to this
+                // app to make sure that no other app can steal this pending-intent b/19296918.
+                .setContentIntent(PendingIntent
+                        .getActivity(context, 0, new Intent(context.getPackageName(), null), 0))
                 .getNotification();
     }
 
@@ -257,11 +270,15 @@ public class NotificationImportExportListener implements VCardImportExportListen
             Context context, String title, String description, Intent intent) {
         return new Notification.Builder(context)
                 .setAutoCancel(true)
+                .setColor(context.getResources().getColor(R.color.dialtacts_theme_color))
                 .setSmallIcon(android.R.drawable.stat_sys_download_done)
                 .setContentTitle(title)
                 .setContentText(description)
+                // If no intent provided, include an intent that won't resolve to anything.
+                // Restrict the intent to this app to make sure that no other app can steal this
+                // pending-intent b/19296918.
                 .setContentIntent(PendingIntent.getActivity(context, 0,
-                        (intent != null ? intent : new Intent()), 0))
+                        (intent != null ? intent : new Intent(context.getPackageName(), null)), 0))
                 .getNotification();
     }
 
@@ -275,10 +292,14 @@ public class NotificationImportExportListener implements VCardImportExportListen
             Context context, String reason) {
         return new Notification.Builder(context)
                 .setAutoCancel(true)
+                .setColor(context.getResources().getColor(R.color.dialtacts_theme_color))
                 .setSmallIcon(android.R.drawable.stat_notify_error)
                 .setContentTitle(context.getString(R.string.vcard_import_failed))
                 .setContentText(reason)
-                .setContentIntent(PendingIntent.getActivity(context, 0, new Intent(), 0))
+                // Launch an intent that won't resolve to anything. Restrict the intent to this
+                // app to make sure that no other app can steal this pending-intent b/19296918.
+                .setContentIntent(PendingIntent
+                        .getActivity(context, 0, new Intent(context.getPackageName(), null), 0))
                 .getNotification();
     }
 

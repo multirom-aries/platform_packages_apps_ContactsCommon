@@ -17,6 +17,7 @@
 package com.android.contacts.common.list;
 
 import android.app.Activity;
+import android.app.Fragment;
 import android.app.LoaderManager;
 import android.app.LoaderManager.LoaderCallbacks;
 import android.content.BroadcastReceiver;
@@ -25,7 +26,6 @@ import android.content.CursorLoader;
 import android.content.Intent;
 import android.content.IntentFilter;
 import android.content.Loader;
-import android.content.res.Resources;
 import android.database.Cursor;
 import android.os.Bundle;
 import android.os.Handler;
@@ -33,6 +33,7 @@ import android.os.Message;
 import android.os.Parcelable;
 import android.provider.ContactsContract.Directory;
 import android.text.TextUtils;
+import android.util.Log;
 import android.view.LayoutInflater;
 import android.view.MotionEvent;
 import android.view.View;
@@ -44,16 +45,13 @@ import android.widget.AbsListView;
 import android.widget.AbsListView.OnScrollListener;
 import android.widget.AdapterView;
 import android.widget.AdapterView.OnItemClickListener;
+import android.widget.AdapterView.OnItemLongClickListener;
 import android.widget.ListView;
 
 import com.android.common.widget.CompositeCursorAdapter.Partition;
-import com.android.contacts.common.R;
 import com.android.contacts.common.ContactPhotoManager;
 import com.android.contacts.common.preference.ContactsPreferences;
 import com.android.contacts.common.util.ContactListViewUtils;
-import com.android.contacts.common.util.SchedulingUtils;
-import com.android.dialerbind.analytics.AnalyticsFragment;
-import com.android.internal.telephony.TelephonyIntents;
 
 import java.util.Locale;
 
@@ -61,9 +59,9 @@ import java.util.Locale;
  * Common base class for various contact-related list fragments.
  */
 public abstract class ContactEntryListFragment<T extends ContactEntryListAdapter>
-        extends AnalyticsFragment
+        extends Fragment
         implements OnItemClickListener, OnScrollListener, OnFocusChangeListener, OnTouchListener,
-                LoaderCallbacks<Cursor> {
+                OnItemLongClickListener, LoaderCallbacks<Cursor> {
     private static final String TAG = "ContactEntryListFragment";
 
     // TODO: Make this protected. This should not be used from the PeopleActivity but
@@ -177,6 +175,15 @@ public abstract class ContactEntryListFragment<T extends ContactEntryListAdapter
      *            views.
      */
     protected abstract void onItemClick(int position, long id);
+
+    /**
+     * @param position Please note that the position is already adjusted for
+     *            header views, so "0" means the first list item below header
+     *            views.
+     */
+    protected boolean onItemLongClick(int position, long id) {
+        return false;
+    }
 
     @Override
     public void onAttach(Activity activity) {
@@ -357,7 +364,19 @@ public abstract class ContactEntryListFragment<T extends ContactEntryListAdapter
     }
 
     public CursorLoader createCursorLoader(Context context) {
-        return new CursorLoader(context, null, null, null, null, null);
+        return new CursorLoader(context, null, null, null, null, null) {
+            @Override
+            protected Cursor onLoadInBackground() {
+                try {
+                    return super.onLoadInBackground();
+                } catch (RuntimeException e) {
+                    // We don't even know what the projection should be, so no point trying to
+                    // return an empty MatrixCursor with the correct projection here.
+                    Log.w(TAG, "RuntimeException while trying to query ContactsProvider.");
+                    return null;
+                }
+            }
+        };
     }
 
     private void startLoadingDirectoryPartition(int partitionIndex) {
@@ -752,6 +771,7 @@ public abstract class ContactEntryListFragment<T extends ContactEntryListAdapter
         }
 
         mListView.setOnItemClickListener(this);
+        mListView.setOnItemLongClickListener(this);
         mListView.setOnFocusChangeListener(this);
         mListView.setOnTouchListener(this);
         mListView.setFastScrollEnabled(!isSearchMode());
@@ -836,6 +856,16 @@ public abstract class ContactEntryListFragment<T extends ContactEntryListAdapter
         if (adjPosition >= 0) {
             onItemClick(adjPosition, id);
         }
+    }
+
+    @Override
+    public boolean onItemLongClick(AdapterView<?> parent, View view, int position, long id) {
+        int adjPosition = position - mListView.getHeaderViewsCount();
+
+        if (adjPosition >= 0) {
+            return onItemLongClick(adjPosition, id);
+        }
+        return false;
     }
 
     private void hideSoftKeyboard() {

@@ -44,7 +44,7 @@ import java.util.ArrayList;
 import java.util.List;
 
 /**
- * Utility class for selectiong an Account for importing contact(s)
+ * Utility class for selecting an Account for importing contact(s)
  */
 public class AccountSelectionUtil {
     // TODO: maybe useful for EditContactActivity.java...
@@ -66,22 +66,31 @@ public class AccountSelectionUtil {
 
         final private Context mContext;
         final private int mResId;
+        final private int mSubscriptionId;
 
         protected List<AccountWithDataSet> mAccountList;
 
         public AccountSelectedListener(Context context, List<AccountWithDataSet> accountList,
-                int resId) {
+                int resId, int subscriptionId) {
             if (accountList == null || accountList.size() == 0) {
                 Log.e(LOG_TAG, "The size of Account list is 0.");
             }
             mContext = context;
             mAccountList = accountList;
             mResId = resId;
+            mSubscriptionId = subscriptionId;
+        }
+
+        public AccountSelectedListener(Context context, List<AccountWithDataSet> accountList,
+                int resId) {
+            // Subscription id is only needed for importing from SIM card. We can safely ignore
+            // its value for SD card importing.
+            this(context, accountList, resId, /* subscriptionId = */ -1);
         }
 
         public void onClick(DialogInterface dialog, int which) {
             dialog.dismiss();
-            doImport(mContext, mResId, mAccountList.get(which));
+            doImport(mContext, mResId, mAccountList.get(which), mSubscriptionId);
         }
         /**
          * Reset the account list for this listener, to make sure the selected
@@ -195,36 +204,22 @@ public class AccountSelectionUtil {
             .create();
     }
 
-    public static void doImport(Context context, int resId, AccountWithDataSet account) {
+    public static void doImport(Context context, int resId, AccountWithDataSet account,
+            int subscriptionId) {
         switch (resId) {
-            case R.string.import_from_sim: {
-                doImportFromSim(context, account);
+            case R.string.manage_sim_contacts: {
+                doImportFromSim(context, account, subscriptionId);
                 break;
             }
-            case R.string.import_from_sdcard: {
-                doImportFromSdCard(context, account);
+            case R.string.import_from_vcf_file: {
+                doImportFromVcfFile(context, account);
                 break;
             }
         }
     }
 
-    public static void doImportFromSim(Context context, AccountWithDataSet account) {
-        Intent importIntent = new Intent(SimContactsConstants.ACTION_MULTI_PICK_SIM);
-        if (account != null) {
-            importIntent.putExtra(SimContactsConstants.ACCOUNT_NAME, account.name);
-            importIntent.putExtra(SimContactsConstants.ACCOUNT_TYPE, account.type);
-            importIntent.putExtra(SimContactsConstants.ACCOUNT_DATA, account.dataSet);
-        }
-        if (TelephonyManager.getDefault().isMultiSimEnabled()) {
-            importIntent.putExtra(SimContactsConstants.SUB, mImportSub);
-        } else {
-            importIntent.putExtra(SimContactsConstants.SUB,SimContactsConstants.SUB_1);
-        }
-        context.startActivity(importIntent);
-    }
-
-    public static void doImportFromMultiSim(Context context, AccountWithDataSet account,
-            int selectedSim) {
+    public static void doImportFromSim(Context context, AccountWithDataSet account,
+            int subscriptionId) {
         Intent importIntent = new Intent(Intent.ACTION_VIEW);
         importIntent.setType("vnd.android.cursor.item/sim-contact");
         if (account != null) {
@@ -232,12 +227,13 @@ public class AccountSelectionUtil {
             importIntent.putExtra("account_type", account.type);
             importIntent.putExtra("data_set", account.dataSet);
         }
+        importIntent.putExtra("subscription_id", (Integer) subscriptionId);
         importIntent.setClassName("com.android.phone", "com.android.phone.SimContacts");
         importIntent.putExtra(SIM_INDEX, selectedSim);
         context.startActivity(importIntent);
     }
 
-    public static void doImportFromSdCard(Context context, AccountWithDataSet account) {
+    public static void doImportFromVcfFile(Context context, AccountWithDataSet account) {
         Intent importIntent = new Intent(context, ImportVCardActivity.class);
         if (account != null) {
             importIntent.putExtra("account_name", account.name);
